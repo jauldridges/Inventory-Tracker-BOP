@@ -44,12 +44,14 @@ async function updateItemAction(formData: FormData) {
   "use server";
   const id = Number.parseInt(String(formData.get("id") ?? "0"), 10);
   if (!id) return;
+  const name = String(formData.get("name") ?? "").trim();
   const leadDays = Number.parseInt(String(formData.get("lead") ?? "3"), 10) || 3;
   const safetyDays = Number.parseInt(String(formData.get("safety") ?? "2"), 10) || 2;
   const reorderUrl = String(formData.get("reorderUrl") ?? "").trim() || null;
   await db
     .update(schema.inventoryItems)
     .set({
+      ...(name ? { name } : {}),
       reorderLeadDays: leadDays,
       safetyStockDays: safetyDays,
       reorderUrl,
@@ -151,9 +153,18 @@ export default async function InventoryPage() {
                 </td>
               </tr>
             ) : (
-              items.map((it) => (
+              items.map((it) => {
+                const formId = `update-${it.id}`;
+                return (
                 <tr key={it.id} className="border-t align-middle">
-                  <td className="px-4 py-3 font-medium">{it.name}</td>
+                  <td className="px-4 py-3">
+                    <input
+                      form={formId}
+                      name="name"
+                      defaultValue={it.name}
+                      className="border rounded px-2 py-1 text-sm font-medium w-full"
+                    />
+                  </td>
                   <td className="px-4 py-3">{it.unit}</td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {Number.parseFloat(it.currentStock).toFixed(0)}
@@ -177,7 +188,7 @@ export default async function InventoryPage() {
                     </form>
                   </td>
                   <td className="px-4 py-3">
-                    <form action={updateItemAction} className="flex gap-2 items-center">
+                    <form id={formId} action={updateItemAction} className="flex gap-2 items-center">
                       <input type="hidden" name="id" value={it.id} />
                       <input
                         name="lead"
@@ -232,7 +243,8 @@ export default async function InventoryPage() {
                     </form>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

@@ -65,6 +65,7 @@ export const consumptionLog = pgTable(
     id: serial("id").primaryKey(),
     squareOrderId: text("square_order_id").notNull(),
     squareLineItemUid: text("square_line_item_uid").notNull(),
+    squareVariationId: text("square_variation_id"),
     inventoryItemId: integer("inventory_item_id")
       .notNull()
       .references(() => inventoryItems.id, { onDelete: "cascade" }),

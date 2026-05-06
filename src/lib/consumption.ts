@@ -90,6 +90,7 @@ export async function applyOrderLinesToInventory(
         .values({
           squareOrderId: line.orderId,
           squareLineItemUid: line.lineItemUid,
+          squareVariationId: line.catalogObjectId,
           inventoryItemId: m.inventoryItemId,
           quantity: consumed.toString(),
           occurredAt: line.createdAt,
