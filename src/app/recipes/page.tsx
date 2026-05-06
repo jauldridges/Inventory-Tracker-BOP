@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { syncSquareCatalog } from "@/lib/sync";
 
@@ -74,6 +74,29 @@ export default async function RecipesPage() {
       .orderBy(asc(schema.squareCatalogItems.name)),
   ]);
 
+  const groups = new Map<
+    number,
+    {
+      catalogId: number;
+      catalogName: string;
+      variationName: string | null;
+      rows: typeof existingRecipes;
+    }
+  >();
+  for (const r of existingRecipes) {
+    const g = groups.get(r.squareCatalogItemId);
+    if (g) {
+      g.rows.push(r);
+    } else {
+      groups.set(r.squareCatalogItemId, {
+        catalogId: r.squareCatalogItemId,
+        catalogName: r.catalogName,
+        variationName: r.variationName,
+        rows: [r],
+      });
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -109,7 +132,12 @@ export default async function RecipesPage() {
         </div>
       ) : (
         <section className="border rounded bg-white p-4">
-          <h2 className="font-medium mb-3">Add mapping</h2>
+          <h2 className="font-medium mb-3">Map a new Square item</h2>
+          <p className="text-xs text-neutral-500 mb-3">
+            Use this to start mapping a Square item that has no consumables yet.
+            To add more consumables to an item that's already mapped, use the
+            inline form under that item below.
+          </p>
           <form
             action={addRecipeAction}
             className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center"
@@ -158,54 +186,99 @@ export default async function RecipesPage() {
         </section>
       )}
 
-      <section className="border rounded bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-left">
-            <tr>
-              <th className="px-4 py-2">Square item</th>
-              <th className="px-4 py-2">Consumes</th>
-              <th className="px-4 py-2 text-right">Qty per sale</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {existingRecipes.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-neutral-500">
-                  No mappings yet.
-                </td>
-              </tr>
-            ) : (
-              existingRecipes.map((r) => (
-                <tr key={`${r.squareCatalogItemId}-${r.inventoryItemId}`} className="border-t">
-                  <td className="px-4 py-3">
-                    {r.catalogName}
-                    {r.variationName ? (
-                      <span className="text-neutral-500"> — {r.variationName}</span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">{r.inventoryName}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {Number.parseFloat(r.quantityPerSale)} {r.unit}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <form action={deleteRecipeAction}>
-                      <input type="hidden" name="catalogId" value={r.squareCatalogItemId} />
-                      <input type="hidden" name="inventoryId" value={r.inventoryItemId} />
-                      <button
-                        type="submit"
-                        className="text-sm text-red-600 hover:underline"
-                      >
-                        Remove
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </section>
+      {groups.size === 0 ? (
+        <div className="border rounded bg-white p-8 text-center text-neutral-500">
+          No mappings yet.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {Array.from(groups.values()).map((g) => (
+            <section key={g.catalogId} className="border rounded bg-white overflow-hidden">
+              <header className="bg-neutral-50 px-4 py-3 border-b">
+                <h3 className="font-medium">
+                  {g.catalogName}
+                  {g.variationName ? (
+                    <span className="text-neutral-500"> — {g.variationName}</span>
+                  ) : null}
+                </h3>
+              </header>
+              <table className="w-full text-sm">
+                <tbody>
+                  {g.rows.map((r) => (
+                    <tr
+                      key={`${r.squareCatalogItemId}-${r.inventoryItemId}`}
+                      className="border-t first:border-t-0"
+                    >
+                      <td className="px-4 py-2.5">{r.inventoryName}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums w-32">
+                        {Number.parseFloat(r.quantityPerSale)} {r.unit}
+                      </td>
+                      <td className="px-4 py-2.5 text-right w-24">
+                        <form action={deleteRecipeAction}>
+                          <input
+                            type="hidden"
+                            name="catalogId"
+                            value={r.squareCatalogItemId}
+                          />
+                          <input
+                            type="hidden"
+                            name="inventoryId"
+                            value={r.inventoryItemId}
+                          />
+                          <button
+                            type="submit"
+                            className="text-sm text-red-600 hover:underline"
+                          >
+                            Remove
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="border-t bg-neutral-50/50 px-4 py-3">
+                <form
+                  action={addRecipeAction}
+                  className="flex flex-wrap gap-2 items-center"
+                >
+                  <input type="hidden" name="catalogId" value={g.catalogId} />
+                  <span className="text-xs text-neutral-500 mr-1">+ also uses:</span>
+                  <select
+                    name="inventoryId"
+                    required
+                    className="border rounded px-2 py-1.5 text-sm flex-1 min-w-[200px]"
+                  >
+                    <option value="">Select consumable…</option>
+                    {inventory
+                      .filter(
+                        (i) => !g.rows.some((r) => r.inventoryItemId === i.id),
+                      )
+                      .map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name}
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    name="qty"
+                    type="number"
+                    step="0.01"
+                    defaultValue="1"
+                    className="border rounded px-2 py-1.5 text-sm w-20"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-black text-white rounded px-3 py-1.5 text-sm hover:bg-neutral-800"
+                  >
+                    Add
+                  </button>
+                </form>
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
