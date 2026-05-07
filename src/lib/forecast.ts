@@ -21,24 +21,33 @@ export interface ForecastRow {
 
 export async function forecastAll(): Promise<ForecastRow[]> {
   const items = await db.select().from(schema.inventoryItems).orderBy(schema.inventoryItems.name);
-  const since = new Date(Date.now() - FORECAST_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const since = new Date(now.getTime() - FORECAST_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const usage = await db
     .select({
       inventoryItemId: schema.consumptionLog.inventoryItemId,
       total: sql<string>`sum(${schema.consumptionLog.quantity})`,
+      first: sql<string>`min(${schema.consumptionLog.occurredAt})`,
     })
     .from(schema.consumptionLog)
     .where(gte(schema.consumptionLog.occurredAt, since))
     .groupBy(schema.consumptionLog.inventoryItemId);
 
-  const usageByItem = new Map(
-    usage.map((u) => [u.inventoryItemId, Number.parseFloat(u.total) || 0]),
-  );
+  const avgByItem = new Map<number, number>();
+  for (const u of usage) {
+    const total = Number.parseFloat(u.total) || 0;
+    const first = u.first ? new Date(u.first) : since;
+    const dataDays = Math.max(
+      1,
+      (now.getTime() - first.getTime()) / (24 * 60 * 60 * 1000),
+    );
+    const effectiveWindow = Math.min(FORECAST_WINDOW_DAYS, dataDays);
+    avgByItem.set(u.inventoryItemId, total / effectiveWindow);
+  }
 
   return items.map((it) => {
-    const used = usageByItem.get(it.id) ?? 0;
-    const avgDailyUse = used / FORECAST_WINDOW_DAYS;
+    const avgDailyUse = avgByItem.get(it.id) ?? 0;
     const stock = Number.parseFloat(it.currentStock);
     const daysOfSupply = avgDailyUse > 0 ? stock / avgDailyUse : Number.POSITIVE_INFINITY;
     const threshold = it.reorderLeadDays + it.safetyStockDays;

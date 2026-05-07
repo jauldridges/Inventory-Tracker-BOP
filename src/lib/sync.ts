@@ -50,9 +50,9 @@ export async function syncSquareCatalog() {
 
 export async function syncSquareOrders() {
   const state = await getOrInitSyncState();
-  // Default to pulling the last 24h on first run.
+  // First run pulls 14 days so the forecast has a meaningful baseline.
   const since =
-    state.lastOrderSyncAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+    state.lastOrderSyncAt ?? new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const now = new Date();
 
   const lines = await searchCompletedOrdersSince(since);
