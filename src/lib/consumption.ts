@@ -2,11 +2,16 @@ import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { FlatOrderLineItem } from "./square";
 
+// Only orders with one of these fulfillment types consume inventory.
+// Dine-in / for-here orders use ceramic, not paper, so they're skipped.
+const TO_GO_FULFILLMENT_TYPES = new Set(["PICKUP", "DELIVERY", "SHIPMENT"]);
+
 export interface ConsumptionResult {
   ordersProcessed: number;
   lineItemsProcessed: number;
   consumptionRowsInserted: number;
   unmappedCatalogObjectIds: string[];
+  skippedForHere: number;
 }
 
 /**
@@ -20,11 +25,21 @@ export async function applyOrderLinesToInventory(
   const seenOrders = new Set<string>();
   let lineItemsProcessed = 0;
   let rowsInserted = 0;
+  let skippedForHere = 0;
   const unmapped = new Set<string>();
+
+  // Pre-filter to only the lines whose order is being taken to-go.
+  const eligible = lines.filter((l) => {
+    if (l.orderFulfillmentTypes.some((t) => TO_GO_FULFILLMENT_TYPES.has(t))) {
+      return true;
+    }
+    skippedForHere++;
+    return false;
+  });
 
   // Gather unique catalog IDs we saw in this batch.
   const catalogIds = Array.from(
-    new Set(lines.map((l) => l.catalogObjectId).filter((x): x is string => !!x)),
+    new Set(eligible.map((l) => l.catalogObjectId).filter((x): x is string => !!x)),
   );
   if (catalogIds.length === 0) {
     return {
@@ -32,6 +47,7 @@ export async function applyOrderLinesToInventory(
       lineItemsProcessed: lines.length,
       consumptionRowsInserted: 0,
       unmappedCatalogObjectIds: [],
+      skippedForHere,
     };
   }
 
@@ -70,8 +86,9 @@ export async function applyOrderLinesToInventory(
   // Accumulate per-item decrements to minimize round trips.
   const decrementsByItem = new Map<number, number>();
 
-  for (const line of lines) {
-    seenOrders.add(line.orderId);
+  for (const line of lines) seenOrders.add(line.orderId);
+
+  for (const line of eligible) {
     lineItemsProcessed++;
 
     if (!line.catalogObjectId) continue;
@@ -124,6 +141,7 @@ export async function applyOrderLinesToInventory(
     lineItemsProcessed,
     consumptionRowsInserted: rowsInserted,
     unmappedCatalogObjectIds: Array.from(unmapped),
+    skippedForHere,
   };
 }
 
