@@ -44,7 +44,6 @@ export interface FlatOrderLineItem {
   catalogObjectId: string | null;
   quantity: number;
   createdAt: Date;
-  orderFulfillmentTypes: string[];
 }
 
 export async function searchCompletedOrdersSince(
@@ -80,10 +79,6 @@ export async function searchCompletedOrdersSince(
         : order.createdAt
           ? new Date(order.createdAt)
           : new Date();
-      const orderFulfillmentTypes: string[] = [];
-      for (const f of order.fulfillments ?? []) {
-        if (f.type) orderFulfillmentTypes.push(String(f.type));
-      }
       for (const line of order.lineItems ?? []) {
         const qty = Number.parseFloat(line.quantity ?? "1");
         if (!Number.isFinite(qty) || qty <= 0) continue;
@@ -93,7 +88,6 @@ export async function searchCompletedOrdersSince(
           catalogObjectId: line.catalogObjectId ?? null,
           quantity: qty,
           createdAt,
-          orderFulfillmentTypes,
         });
       }
     }
